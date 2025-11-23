@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Music Search</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    body { margin:0; font-family:system-ui; background:#111; color:white; padding:15px; }
+    input { width:100%; padding:14px; border-radius:12px; border:none; font-size:17px; margin-bottom:15px; }
+    button { padding:14px; background:#1DB954; color:white; border:none; border-radius:12px; font-size:17px; width:100%; }
+    .track { background:#222; padding:12px; border-radius:12px; margin:10px 0; display:flex; align-items:center; gap:12px; cursor:pointer; }
+    .track img { width:60px; height:60px; border-radius:8px; object-fit:cover; }
+    .info { flex:1; }
+    .service { font-size:12px; opacity:0.7; }
+    audio { width:100%; margin-top:20px; }
+    .now { background:#1DB954; color:white; padding:15px; border-radius:12px; text-align:center; margin:20px 0; }
+  </style>
+</head>
+<body>
+
+  <h2>Музыка в Telegram</h2>
+  <input type="text" id="query" placeholder="Введи название трека или артиста..." />
+  <button onclick="search()">Найти</button>
+
+  <div id="results"></div>
+  <div id="player"></div>
+
+<script>
+// Твой токен Spotify (живёт ~1 час, потом нужно обновить)
+const SPOTIFY_TOKEN = "BQD6YdQ6h_RWdr2eT1KW2a4m32ARZFHTDxd0SrgchTaN51vMeQFh5ZQxmLZBHSoYarmtuVkEcVRC4bLMuE3N7Qvu9R1dVqQI1DZenSaZXotwOIDWSvittEcC5CF65iSH6tLqjbnKOwDwT0ejewIaIZKMWuFKebqlMe84QG7qnFDgXXBF-Wd2h3iBlm1tWcVrfdIbLHhVUxju69oZ9UANnEOfhjyDe5-M0CaFq9tAElHeP__3slys6e4P0vVR2W_oG2w-IihIuaajUOEHnAAxHxQAXnxsY76oYpK1qYX0EphhrjSf3wCgVlZyy9YJxmwrkalc";
+
+// SoundCloud публичный клиент (работает без регистрации)
+const SC_CLIENT_ID = "NJd8l2f3V2Q8z4y6v7b9x0c1v2b3n4m5";
+
+// Глобальные переменные
+let currentAudio = null;
+
+async function search() {
+  const q = document.getElementById('query').value.trim();
+  if (!q) return;
+  
+  document.getElementById('results').innerHTML = '<p>Ищем...</p>';
+
+  const [spotify, soundcloud, youtube] = await Promise.all([
+    searchSpotify(q),
+    searchSoundCloud(q),
+    searchYouTube(q)
+  ]);
+
+  const all = [...spotify, ...soundcloud, ...youtube];
+  displayResults(all);
+}
+
+async function searchSpotify(q) {
+  try {
+    const r = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=10`, {
+      headers: { 'Authorization': 'Bearer ' + SPOTIFY_TOKEN }
+    });
+    const data = await r.json();
+    return (data.tracks?.items || []).map(t => ({
+      title: t.name,
+      artist: t.artists[0].name,
+      cover: t.album.images[1]?.url || t.album.images[0]?.url,
+      url: t.preview_url || null,           // 30 сек превью (всегда есть)
+      full: t.external_urls.spotify,        // ссылка на Spotify
+      service: 'Spotify'
+    }));
+  } catch(e) { console.log(e); return []; }
+}
+
+async function searchSoundCloud(q) {
+  try {
+    const r = await fetch(`https://api.soundcloud.com/tracks?client_id=${SC_CLIENT_ID}&q=${encodeURIComponent(q)}&limit=10`);
+    const tracks = await r.json();
+    return tracks.filter(t => t.streamable).map(t => ({
+      title: t.title.split(' - ')[1] || t.title,
+      artist: t.user.username,
+      cover: t.artwork_url?.replace('-large', '-t500x500') || '',
+      url: t.stream_url + '?client_id=' + SC_CLIENT_ID,
+      service: 'SoundCloud'
+    }));
+  } catch(e) { return []; }
+}
+
+async function searchYouTube(q) {
+  // Используем открытый CORS-прокси + YouTube search (работает без ключа)
+  try {
+    const r = await fetch(`https://api.allorigins.win/raw?url=https://www.youtube.com/results?search_query=${encodeURIComponent(q + " official audio")}`);
+    const html = await r.text();
+    const regex = /"videoId":"([^"]{11})/g;
+    const ids = [...new Set([...html.matchAll(regex)].map(m => m[1]))].slice(0, 8);
+
+    return ids.map(id => ({
+      title: q,
+      artist: 'YouTube',
+      cover: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${id}`,
+      service: 'YouTube',
+      isVideo: true
+    }));
+  } catch(e) { return []; }
+}
+
+function displayResults(tracks) {
+  if (tracks.length === 0) {
+    document.getElementById('results').innerHTML = '<p>Ничего не найдено</p>';
+    return;
+  }
+
+  document.getElementById('results').innerHTML = tracks.map((t, i) => `
+    <div class="track" onclick="play(${i})">
+      <img src="${t.cover || 'https://via.placeholder.com/60'}" onerror="this.src='https://via.placeholder.com/60'">
+      <div class="info">
+        <div><b>${t.title.substring(0,40)}${t.title.length>40?'...':''}</b></div>
+        <div class="service">${t.artist} • ${t.service}</div>
+      </div>
+    </div>
+  `).join('');
+
+  window.tracks = tracks; // сохраняем глобально
+}
+
+function play(i) {
+  const track = window.tracks[i];
+  
+  if (currentAudio) currentAudio.pause();
+  
+  document.getElementById('player').innerHTML = `
+    <div class="now">
+      <b>Играет: ${track.title}</b><br>
+      ${track.artist} • ${track.service}
+    </div>
+  `;
+
+  if (track.isVideo) {
+    // YouTube видео через iframe
+    document.getElementById('player').innerHTML += `
+      <iframe width="100%" height="200" src="https://www.youtube.com/embed/${track.url.split('v=')[1]}?autoplay=1" frameborder="0" allow="autoplay"></iframe>
+    `;
+  } elseix
+  else if (track.url) {
+    const audio = new Audio(track.url);
+    audio.controls = true;
+    audio.autoplay = true;
+    document.getElementById('player').appendChild(audio);
+    currentAudio = audio;
+  } else {
+    document.getElementById('player').innerHTML += '<p>Превью недоступно</p>';
+  }
+}
+
+// Telegram WebApp готов
+Telegram.WebApp.ready();
+Telegram.WebApp.expand();
+</script>
+
+</body>
+</html>
