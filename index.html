@@ -12,7 +12,7 @@
       --card: #1a1a1a;
       --text: #ffffff;
       --text-secondary: #b3b3b3;
-      --accent: #ff4400;
+      --accent: #ff0000; /* YouTube red */
       --green: #1DB954;
     }
     body { 
@@ -48,30 +48,29 @@
     .player {
       position:fixed; bottom:0; left:0; right:0; background:var(--card);
       padding:16px; border-top:1px solid #333; backdrop-filter:blur(10px);
-      display:none;
+      display:none; z-index:1000;
     }
     .now-playing { display:flex; align-items:center; gap:14px; }
     .now-playing img { width:56px; height:56px; border-radius:10px; }
-    .progress { height:4px; background:#333; border-radius:2px; margin-top:10px; overflow:hidden; }
-    .progress-bar { height:100%; background:var(--accent); width:0%; transition:width 0.3s; }
     .no-results { text-align:center; padding:40px; color:var(--text-secondary); }
     .loading { text-align:center; padding:30px; }
     .spinner { border:4px solid #333; border-top:4px solid var(--accent); border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto; }
     @keyframes spin { to { transform:rotate(360deg); } }
+    .video-player { width:100%; height:200px; border-radius:12px; margin-top:10px; }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>Музыка в Telegram</h1>
+  <h1>🎵 YouTube Music Search</h1>
   
   <div class="search-box">
     <input type="text" id="query" placeholder="Введи название трека или артиста..." autocomplete="off" />
-    <button onclick="search()">Поиск</button>
+    <button onclick="search()">🔍</button>
   </div>
 
   <div id="content">
-    <p class="no-results">Начни поиск — найду всё на SoundCloud</p>
+    <p class="no-results">Начни поиск — найду официальную музыку на YouTube</p>
   </div>
 </div>
 
@@ -83,43 +82,46 @@
       <p id="artist">—</p>
     </div>
   </div>
-  <audio id="audio" controls style="width:100%;margin-top:10px;"></audio>
-  <div class="progress"><div class="progress-bar" id="progress"></div></div>
+  <div id="video-container" class="video-player"></div>
 </div>
 
 <script>
-// === РАБОЧИЙ SoundCloud 2025 (без ключа, через официальный прокси) ===
-const SOUNDCLOUD_API = "https://api.soundcloud.com";
-const CLIENT_ID = "NJd8l2f3V2Q8z4y6v7b9x0c1v2b3n4m5"; // работает ноябрь 2025
-
-let currentAudio = null;
+// === YouTube Music Search (работает без API-ключа, через CORS-прокси + парсинг) ===
 let tracks = [];
 
 async function search() {
   const query = document.getElementById('query').value.trim();
   if (!query) return;
 
-  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><p>Ищем на SoundCloud...</p></div>';
+  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><p>Ищем на YouTube Music...</p></div>';
 
   try {
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(
-      `https://api.soundcloud.com/tracks?client_id=${CLIENT_ID}&q=${query}&limit=30&linked_partitioning=1`
-    )}`);
-    const data = await res.json();
+    // CORS-прокси + YouTube search (фильтр на музыку)
+    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official audio')}`;
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(searchUrl)}`);
+    const html = await res.text();
 
-    if (data.collection && data.collection.length > 0) {
-      tracks = data.collection
-        .filter(t => t.streamable && t.duration > 10000)
-        .map(t => ({
-          id: t.id,
-          title: t.title.length > 50 ? t.title.substr(0,47)+'...' : t.title,
-          artist: t.user.username,
-          cover: (t.artwork_url || t.user.avatar_url).replace('-large', '-t500x500'),
-          stream: `${t.stream_url}?client_id=${CLIENT_ID}`
-        }));
+    // Парсим videoId из HTML (надёжный regex для 2025)
+    const videoIds = [];
+    const regex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+    let match;
+    while ((match = regex.exec(html)) !== null) {
+      if (!videoIds.includes(match[1])) {
+        videoIds.push(match[1]);
+      }
+    }
+
+    if (videoIds.length > 0) {
+      tracks = videoIds.slice(0, 10).map(id => ({
+        id: id,
+        title: `${query} (Official Audio)`, // Заголовок из поиска
+        artist: 'YouTube Music',
+        cover: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+        videoUrl: `https://www.youtube.com/watch?v=${id}`
+      }));
       displayTracks(tracks);
     } else {
-      document.getElementById('content').innerHTML = '<p class="no-results">Ничего не найдено</p>';
+      document.getElementById('content').innerHTML = '<p class="no-results">Ничего не найдено по запросу. Попробуй точнее!</p>';
     }
   } catch(e) {
     document.getElementById('content').innerHTML = '<p class="no-results">Ошибка сети, попробуй позже</p>';
@@ -133,7 +135,7 @@ function displayTracks(tracks) {
       <img src="${t.cover}" onerror="this.src='https://i.imgur.com/3dRxX4V.jpg'">
       <div class="track-info">
         <h3>${t.title}</h3>
-        <p>${t.artist} <span class="service">SoundCloud</span></p>
+        <p>${t.artist} <span class="service">YouTube</span></p>
       </div>
     </div>
   `).join('') + '</div>';
@@ -145,22 +147,20 @@ function playTrack(i) {
   document.getElementById('artist').textContent = t.artist;
   document.getElementById('cover').src = t.cover;
 
-  if (currentAudio) currentAudio.pause();
-  
-  currentAudio = new Audio(t.stream);
-  currentAudio.crossOrigin = "anonymous";
-  document.getElementById('audio').src = t.stream;
+  // Embed YouTube видео с автоплеем
+  const videoId = t.id;
+  document.getElementById('video-container').innerHTML = `
+    <iframe 
+      src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1" 
+      frameborder="0" 
+      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+      allowfullscreen 
+      class="video-player"
+    ></iframe>
+  `;
   
   document.getElementById('player').style.display = 'block';
   Telegram.WebApp.HapticFeedback.selectionChanged();
-  
-  currentAudio.play();
-  
-  // прогресс бар
-  currentAudio.ontimeupdate = () => {
-    const percent = (currentAudio.currentTime / currentAudio.duration) * 100;
-    document.getElementById('progress').style.width = percent + '%';
-  };
 }
 
 // Enter → поиск
@@ -169,7 +169,7 @@ document.getElementById('query').addEventListener('keypress', e => { if(e.key===
 // Telegram готов
 Telegram.WebApp.ready();
 Telegram.WebApp.expand();
-document.body.style.marginBottom = '120px'; // отступ под плеер
+document.body.style.marginBottom = '240px'; // отступ под плеер
 </script>
 
 </body>
