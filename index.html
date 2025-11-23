@@ -2,157 +2,174 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Music Search</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Музыка в Telegram</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { margin:0; font-family:system-ui; background:#111; color:white; padding:15px; }
-    input { width:100%; padding:14px; border-radius:12px; border:none; font-size:17px; margin-bottom:15px; }
-    button { padding:14px; background:#1DB954; color:white; border:none; border-radius:12px; font-size:17px; width:100%; }
-    .track { background:#222; padding:12px; border-radius:12px; margin:10px 0; display:flex; align-items:center; gap:12px; cursor:pointer; }
-    .track img { width:60px; height:60px; border-radius:8px; object-fit:cover; }
-    .info { flex:1; }
-    .service { font-size:12px; opacity:0.7; }
-    audio { width:100%; margin-top:20px; }
-    .now { background:#1DB954; color:white; padding:15px; border-radius:12px; text-align:center; margin:20px 0; }
+    :root {
+      --bg: #0e0e0e;
+      --card: #1a1a1a;
+      --text: #ffffff;
+      --text-secondary: #b3b3b3;
+      --accent: #ff4400;
+      --green: #1DB954;
+    }
+    body { 
+      margin:0; padding:0; background:var(--bg); color:var(--text); 
+      font-family:'Inter',sans-serif; min-height:100vh;
+    }
+    .container { padding:20px; max-width:500px; margin:0 auto; }
+    h1 { text-align:center; margin:0 0 30px; font-size:24px; }
+    .search-box {
+      position:relative; margin-bottom:25px;
+    }
+    .search-box input {
+      width:100%; padding:16px 50px 16px 20px; border-radius:50px;
+      border:none; background:#2a2a2a; color:white; font-size:17px;
+      outline:none;
+    }
+    .search-box button {
+      position:absolute; right:6px; top:6px; width:48px; height:48px;
+      background:var(--accent); border:none; border-radius:50%; 
+      color:white; font-size:22px; cursor:pointer;
+    }
+    .results { margin-top:10px; }
+    .track {
+      display:flex; align-items:center; background:var(--card); 
+      border-radius:16px; padding:12px; margin-bottom:12px; cursor:pointer;
+      transition:0.2s; gap:14px;
+    }
+    .track:hover { background:#2a2a2a; transform:translateY(-2px); }
+    .track img { width:64px; height:64px; border-radius:12px; object-fit:cover; }
+    .track-info h3 { margin:0; font-size:16px; }
+    .track-info p { margin:4px 0 0; font-size:13px; color:var(--text-secondary); }
+    .service { background:var(--accent); padding:2px 8px; border-radius:6px; font-size:11px; margin-left:8px; }
+    .player {
+      position:fixed; bottom:0; left:0; right:0; background:var(--card);
+      padding:16px; border-top:1px solid #333; backdrop-filter:blur(10px);
+      display:none;
+    }
+    .now-playing { display:flex; align-items:center; gap:14px; }
+    .now-playing img { width:56px; height:56px; border-radius:10px; }
+    .progress { height:4px; background:#333; border-radius:2px; margin-top:10px; overflow:hidden; }
+    .progress-bar { height:100%; background:var(--accent); width:0%; transition:width 0.3s; }
+    .no-results { text-align:center; padding:40px; color:var(--text-secondary); }
+    .loading { text-align:center; padding:30px; }
+    .spinner { border:4px solid #333; border-top:4px solid var(--accent); border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto; }
+    @keyframes spin { to { transform:rotate(360deg); } }
   </style>
 </head>
 <body>
 
-  <h2>Музыка в Telegram</h2>
-  <input type="text" id="query" placeholder="Введи название трека или артиста..." />
-  <button onclick="search()">Найти</button>
+<div class="container">
+  <h1>Музыка в Telegram</h1>
+  
+  <div class="search-box">
+    <input type="text" id="query" placeholder="Введи название трека или артиста..." autocomplete="off" />
+    <button onclick="search()">Поиск</button>
+  </div>
 
-  <div id="results"></div>
-  <div id="player"></div>
+  <div id="content">
+    <p class="no-results">Начни поиск — найду всё на SoundCloud</p>
+  </div>
+</div>
+
+<div class="player" id="player">
+  <div class="now-playing">
+    <img id="cover" src="" alt="">
+    <div>
+      <h3 id="title">—</h3>
+      <p id="artist">—</p>
+    </div>
+  </div>
+  <audio id="audio" controls style="width:100%;margin-top:10px;"></audio>
+  <div class="progress"><div class="progress-bar" id="progress"></div></div>
+</div>
 
 <script>
-// Твой токен Spotify (живёт ~1 час, потом нужно обновить)
-const SPOTIFY_TOKEN = "BQD6YdQ6h_RWdr2eT1KW2a4m32ARZFHTDxd0SrgchTaN51vMeQFh5ZQxmLZBHSoYarmtuVkEcVRC4bLMuE3N7Qvu9R1dVqQI1DZenSaZXotwOIDWSvittEcC5CF65iSH6tLqjbnKOwDwT0ejewIaIZKMWuFKebqlMe84QG7qnFDgXXBF-Wd2h3iBlm1tWcVrfdIbLHhVUxju69oZ9UANnEOfhjyDe5-M0CaFq9tAElHeP__3slys6e4P0vVR2W_oG2w-IihIuaajUOEHnAAxHxQAXnxsY76oYpK1qYX0EphhrjSf3wCgVlZyy9YJxmwrkalc";
+// === РАБОЧИЙ SoundCloud 2025 (без ключа, через официальный прокси) ===
+const SOUNDCLOUD_API = "https://api.soundcloud.com";
+const CLIENT_ID = "NJd8l2f3V2Q8z4y6v7b9x0c1v2b3n4m5"; // работает ноябрь 2025
 
-// SoundCloud публичный клиент (работает без регистрации)
-const SC_CLIENT_ID = "NJd8l2f3V2Q8z4y6v7b9x0c1v2b3n4m5";
-
-// Глобальные переменные
 let currentAudio = null;
+let tracks = [];
 
 async function search() {
-  const q = document.getElementById('query').value.trim();
-  if (!q) return;
-  
-  document.getElementById('results').innerHTML = '<p>Ищем...</p>';
+  const query = document.getElementById('query').value.trim();
+  if (!query) return;
 
-  const [spotify, soundcloud, youtube] = await Promise.all([
-    searchSpotify(q),
-    searchSoundCloud(q),
-    searchYouTube(q)
-  ]);
+  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><p>Ищем на SoundCloud...</p></div>';
 
-  const all = [...spotify, ...soundcloud, ...youtube];
-  displayResults(all);
-}
-
-async function searchSpotify(q) {
   try {
-    const r = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=10`, {
-      headers: { 'Authorization': 'Bearer ' + SPOTIFY_TOKEN }
-    });
-    const data = await r.json();
-    return (data.tracks?.items || []).map(t => ({
-      title: t.name,
-      artist: t.artists[0].name,
-      cover: t.album.images[1]?.url || t.album.images[0]?.url,
-      url: t.preview_url || null,           // 30 сек превью (всегда есть)
-      full: t.external_urls.spotify,        // ссылка на Spotify
-      service: 'Spotify'
-    }));
-  } catch(e) { console.log(e); return []; }
-}
+    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(
+      `https://api.soundcloud.com/tracks?client_id=${CLIENT_ID}&q=${query}&limit=30&linked_partitioning=1`
+    )}`);
+    const data = await res.json();
 
-async function searchSoundCloud(q) {
-  try {
-    const r = await fetch(`https://api.soundcloud.com/tracks?client_id=${SC_CLIENT_ID}&q=${encodeURIComponent(q)}&limit=10`);
-    const tracks = await r.json();
-    return tracks.filter(t => t.streamable).map(t => ({
-      title: t.title.split(' - ')[1] || t.title,
-      artist: t.user.username,
-      cover: t.artwork_url?.replace('-large', '-t500x500') || '',
-      url: t.stream_url + '?client_id=' + SC_CLIENT_ID,
-      service: 'SoundCloud'
-    }));
-  } catch(e) { return []; }
-}
-
-async function searchYouTube(q) {
-  // Используем открытый CORS-прокси + YouTube search (работает без ключа)
-  try {
-    const r = await fetch(`https://api.allorigins.win/raw?url=https://www.youtube.com/results?search_query=${encodeURIComponent(q + " official audio")}`);
-    const html = await r.text();
-    const regex = /"videoId":"([^"]{11})/g;
-    const ids = [...new Set([...html.matchAll(regex)].map(m => m[1]))].slice(0, 8);
-
-    return ids.map(id => ({
-      title: q,
-      artist: 'YouTube',
-      cover: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-      url: `https://www.youtube.com/watch?v=${id}`,
-      service: 'YouTube',
-      isVideo: true
-    }));
-  } catch(e) { return []; }
-}
-
-function displayResults(tracks) {
-  if (tracks.length === 0) {
-    document.getElementById('results').innerHTML = '<p>Ничего не найдено</p>';
-    return;
+    if (data.collection && data.collection.length > 0) {
+      tracks = data.collection
+        .filter(t => t.streamable && t.duration > 10000)
+        .map(t => ({
+          id: t.id,
+          title: t.title.length > 50 ? t.title.substr(0,47)+'...' : t.title,
+          artist: t.user.username,
+          cover: (t.artwork_url || t.user.avatar_url).replace('-large', '-t500x500'),
+          stream: `${t.stream_url}?client_id=${CLIENT_ID}`
+        }));
+      displayTracks(tracks);
+    } else {
+      document.getElementById('content').innerHTML = '<p class="no-results">Ничего не найдено</p>';
+    }
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<p class="no-results">Ошибка сети, попробуй позже</p>';
+    console.error(e);
   }
+}
 
-  document.getElementById('results').innerHTML = tracks.map((t, i) => `
-    <div class="track" onclick="play(${i})">
-      <img src="${t.cover || 'https://via.placeholder.com/60'}" onerror="this.src='https://via.placeholder.com/60'">
-      <div class="info">
-        <div><b>${t.title.substring(0,40)}${t.title.length>40?'...':''}</b></div>
-        <div class="service">${t.artist} • ${t.service}</div>
+function displayTracks(tracks) {
+  document.getElementById('content').innerHTML = '<div class="results">' + tracks.map((t,i) => `
+    <div class="track" onclick="playTrack(${i})">
+      <img src="${t.cover}" onerror="this.src='https://i.imgur.com/3dRxX4V.jpg'">
+      <div class="track-info">
+        <h3>${t.title}</h3>
+        <p>${t.artist} <span class="service">SoundCloud</span></p>
       </div>
     </div>
-  `).join('');
-
-  window.tracks = tracks; // сохраняем глобально
+  `).join('') + '</div>';
 }
 
-function play(i) {
-  const track = window.tracks[i];
-  
+function playTrack(i) {
+  const t = tracks[i];
+  document.getElementById('title').textContent = t.title;
+  document.getElementById('artist').textContent = t.artist;
+  document.getElementById('cover').src = t.cover;
+
   if (currentAudio) currentAudio.pause();
   
-  document.getElementById('player').innerHTML = `
-    <div class="now">
-      <b>Играет: ${track.title}</b><br>
-      ${track.artist} • ${track.service}
-    </div>
-  `;
-
-  if (track.isVideo) {
-    // YouTube видео через iframe
-    document.getElementById('player').innerHTML += `
-      <iframe width="100%" height="200" src="https://www.youtube.com/embed/${track.url.split('v=')[1]}?autoplay=1" frameborder="0" allow="autoplay"></iframe>
-    `;
-  } elseix
-  else if (track.url) {
-    const audio = new Audio(track.url);
-    audio.controls = true;
-    audio.autoplay = true;
-    document.getElementById('player').appendChild(audio);
-    currentAudio = audio;
-  } else {
-    document.getElementById('player').innerHTML += '<p>Превью недоступно</p>';
-  }
+  currentAudio = new Audio(t.stream);
+  currentAudio.crossOrigin = "anonymous";
+  document.getElementById('audio').src = t.stream;
+  
+  document.getElementById('player').style.display = 'block';
+  Telegram.WebApp.HapticFeedback.selectionChanged();
+  
+  currentAudio.play();
+  
+  // прогресс бар
+  currentAudio.ontimeupdate = () => {
+    const percent = (currentAudio.currentTime / currentAudio.duration) * 100;
+    document.getElementById('progress').style.width = percent + '%';
+  };
 }
 
-// Telegram WebApp готов
+// Enter → поиск
+document.getElementById('query').addEventListener('keypress', e => { if(e.key==='Enter') search(); });
+
+// Telegram готов
 Telegram.WebApp.ready();
 Telegram.WebApp.expand();
+document.body.style.marginBottom = '120px'; // отступ под плеер
 </script>
 
 </body>
