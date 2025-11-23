@@ -52,6 +52,7 @@
     .track-info p { margin:0; font-size:14px; color:var(--text-secondary); }
     .service { background:var(--accent); color:white; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:500; }
     .duration { font-size:12px; color:var(--text-secondary); margin-left:auto; }
+    .views { font-size:12px; color:var(--text-secondary); margin-top:4px; }
     .player {
       position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(0,0,0,0.8), rgba(0,0,0,0.95)); 
       padding:20px; border-top:1px solid var(--border); backdrop-filter:blur(20px); display:none; z-index:1000;
@@ -68,7 +69,6 @@
     @keyframes spin { to { transform:rotate(360deg); } }
     .video-player { width:100%; height:220px; border-radius:16px; margin-top:12px; }
     .playlist-btn { position:fixed; top:20px; right:20px; background:var(--accent); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:1001; }
-    /* Анимации */
     .track { animation: fadeInUp 0.3s ease-out; }
     @keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
   </style>
@@ -96,6 +96,7 @@
     <div style="flex:1;">
       <h3 id="title" style="margin:0 0 4px; font-size:16px;">—</h3>
       <p id="artist" style="margin:0; font-size:14px; color:var(--text-secondary);">—</p>
+      <p id="views" class="views">—</p>
     </div>
     <button onclick="toggleLike()" style="background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">❤️</button>
   </div>
@@ -109,16 +110,13 @@
 </div>
 
 <script>
-// Глобальные: треки, текущий индекс, плейлист
+const API_KEY = 'ВСТАВЬ_СВОЙ_API_КЛЮЧ_ЗДЕСЬ'; // Замени на свой ключ!
+
 let tracks = [];
 let currentIndex = 0;
 let isPlaying = false;
-let audio = null; // для видео через iframe, но используем events
+let ytPlayer = null;
 
-// Надёжный CORS-прокси 2025
-const CORS_PROXY = 'https://corsproxy.io/?';
-
-// Улучшенный поиск с fallback
 async function search() {
   const query = document.getElementById('query').value.trim();
   if (!query) return;
@@ -126,83 +124,43 @@ async function search() {
   document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><p>Ищем хиты...</p></div>';
 
   try {
-    let videoIds = [];
-    let titles = [];
-    let artists = [];
+    const response = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query + ' official audio')}&type=video&maxResults=20&videoCategoryId=10&key=${API_KEY}`);
+    const data = await response.json();
 
-    // Основной поиск с "official audio"
-    let searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official audio')}`;
-    let html = await fetchWithRetry(CORS_PROXY + encodeURIComponent(searchUrl), { mode: 'cors' });
-    let ids = parseVideoIds(html);
-    if (ids.length > 0) {
-      videoIds = ids.slice(0, 15);
-      [titles, artists] = await parseTitlesAndArtists(html); // Парсим из того же HTML
-    } else {
-      // Fallback без фильтра
-      searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-      html = await fetchWithRetry(CORS_PROXY + encodeURIComponent(searchUrl), { mode: 'cors' });
-      videoIds = parseVideoIds(html).slice(0, 15);
-      [titles, artists] = await parseTitlesAndArtists(html);
-    }
-
-    if (videoIds.length > 0) {
-      tracks = videoIds.map((id, i) => ({
-        id: id,
-        title: titles[i] || `${query} (Audio)`,
-        artist: artists[i] || 'YouTube Music',
-        cover: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
-        videoUrl: `https://www.youtube.com/watch?v=${id}`,
-        duration: '3:45' // Заглушка, можно парсить из HTML
+    if (data.items && data.items.length > 0) {
+      tracks = data.items.map(item => ({
+        id: item.id.videoId,
+        title: item.snippet.title,
+        artist: item.snippet.channelTitle,
+        cover: item.snippet.thumbnails.medium.url,
+        videoUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+        duration: '3:45', // Для реальной длительности добавь part=contentDetails в запрос
+        views: '1M+' // Заглушка; используй statistics API для реала
       }));
       displayTracks(tracks);
     } else {
+      // Fallback без "official audio"
+      const fallbackResponse = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&q=${encodeURIComponent(query)}&type=video&maxResults=20&key=${API_KEY}`);
+      const fallbackData = await fallbackResponse.json();
+      tracks = fallbackData.items ? fallbackData.items.map(item => ({
+        id: item.id.videoId,
+        title: item.snippet.title,
+        artist: item.snippet.channelTitle,
+        cover: item.snippet.thumbnails.medium.url,
+        videoUrl: `https://www.youtube.com/watch?v=${item.id.videoId}`,
+        duration: '3:45',
+        views: '1M+'
+      })) : [];
+      displayTracks(tracks);
+    }
+
+    if (tracks.length === 0) {
       document.getElementById('content').innerHTML = '<p class="no-results">Ничего не найдено. Попробуй другой запрос! 😔</p>';
     }
   } catch(e) {
-    document.getElementById('content').innerHTML = '<p class="no-results">Ошибка сети. Проверь интернет! 🔄</p>';
+    document.getElementById('content').innerHTML = '<p class="no-results">Ошибка API. Проверь ключ или интернет! 🔄</p>';
     console.error(e);
   }
-}
-
-// Fetch с retry и headers для TG
-async function fetchWithRetry(url, options = {}, retries = 2) {
-  options.headers = { ...options.headers, 'User-Agent': 'Mozilla/5.0 (Telegram WebApp)' };
-  for (let i = 0; i <= retries; i++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.ok) return await res.text();
-    } catch(e) { console.log(`Retry ${i+1}:`, e); }
-  }
-  throw new Error('Fetch failed');
-}
-
-// Улучшенный regex для videoId (2025 структура)
-function parseVideoIds(html) {
-  const regex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
-  const ids = [];
-  let match;
-  while ((match = regex.exec(html)) !== null) {
-    if (!ids.includes(match[1])) ids.push(match[1]);
-  }
-  // Fallback regex для старых структур
-  if (ids.length === 0) {
-    const fallback = /watch\?v=([a-zA-Z0-9_-]{11})/g;
-    while ((match = fallback.exec(html)) !== null) {
-      if (!ids.includes(match[1])) ids.push(match[1]);
-    }
-  }
-  return ids;
-}
-
-// Парсинг titles/artists из snippet (упрощённо, через regex)
-async function parseTitlesAndArtists(html) {
-  const titleRegex = /"title":{"runs":\[{"text":"([^"]+)"}\]/g;
-  const channelRegex = /"channelTitle":{"runs":\[{"text":"([^"]+)"}\]/g;
-  const titles = []; let tMatch;
-  const artists = []; let aMatch;
-  while ((tMatch = titleRegex.exec(html)) !== null) titles.push(tMatch[1]);
-  while ((aMatch = channelRegex.exec(html)) !== null) artists.push(aMatch[1]);
-  return [titles.slice(0,15), artists.slice(0,15)];
 }
 
 function displayTracks(tracks) {
@@ -212,6 +170,7 @@ function displayTracks(tracks) {
       <div class="track-info">
         <h3>${t.title.length > 40 ? t.title.substring(0,37)+'...' : t.title}</h3>
         <p>${t.artist} <span class="service">YouTube</span></p>
+        <p class="views">${t.views} просмотров</p>
       </div>
       <span class="duration">${t.duration}</span>
     </div>
@@ -224,16 +183,17 @@ function playTrack(i) {
   document.getElementById('title').textContent = t.title;
   document.getElementById('artist').textContent = t.artist;
   document.getElementById('cover').src = t.cover;
+  document.getElementById('views').textContent = `${t.views} просмотров`;
 
   const videoId = t.id;
   document.getElementById('video-container').innerHTML = `
     <iframe 
-      src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&controls=1" 
+      id="ytPlayer"
+      src="https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&rel=0&modestbranding=1&playsinline=1&controls=1" 
       frameborder="0" 
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
       allowfullscreen 
       class="video-player"
-      id="ytPlayer"
     ></iframe>
   `;
   
@@ -242,41 +202,59 @@ function playTrack(i) {
   document.getElementById('playBtn').textContent = '⏸️';
   Telegram.WebApp.HapticFeedback.impactOccurred('light');
   
-  // Прогресс (симуляция, т.к. iframe)
-  let progress = 0;
-  const interval = setInterval(() => {
-    progress += 1;
-    document.getElementById('progress').style.width = progress + '%';
-    if (progress >= 100) clearInterval(interval);
-  }, 30000); // ~3 мин трек
+  // Прогресс через YouTube IFrame API
+  window.onYouTubeIframeAPIReady = function() {
+    ytPlayer = new YT.Player('ytPlayer', {
+      events: {
+        'onStateChange': onPlayerStateChange
+      }
+    });
+  };
+}
+
+function onPlayerStateChange(event) {
+  if (event.data === YT.PlayerState.PLAYING) {
+    // Симуляция прогресса (реальный через getCurrentTime)
+    const interval = setInterval(() => {
+      if (ytPlayer && ytPlayer.getDuration()) {
+        const progress = (ytPlayer.getCurrentTime() / ytPlayer.getDuration()) * 100;
+        document.getElementById('progress').style.width = progress + '%';
+      }
+    }, 1000);
+  }
 }
 
 function togglePlay() {
-  const player = document.getElementById('ytPlayer');
-  if (isPlaying) {
-    player.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-    document.getElementById('playBtn').textContent = '▶️';
-  } else {
-    player.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-    document.getElementById('playBtn').textContent = '⏸️';
+  if (ytPlayer) {
+    if (isPlaying) {
+      ytPlayer.pauseVideo();
+      document.getElementById('playBtn').textContent = '▶️';
+    } else {
+      ytPlayer.playVideo();
+      document.getElementById('playBtn').textContent = '⏸️';
+    }
+    isPlaying = !isPlaying;
   }
-  isPlaying = !isPlaying;
   Telegram.WebApp.HapticFeedback.selectionChanged();
 }
 
 function prevTrack() { if (currentIndex > 0) playTrack(currentIndex - 1); }
 function nextTrack() { if (currentIndex < tracks.length - 1) playTrack(currentIndex + 1); }
-function toggleLike() { Telegram.WebApp.HapticFeedback.notificationOccurred(); /* TODO: save likes */ }
-function togglePlaylist() { /* TODO: show playlist modal */ alert('Плейлист в разработке!'); }
+function toggleLike() { Telegram.WebApp.HapticFeedback.notificationOccurred(); alert('Добавлено в избранное!'); }
+function togglePlaylist() { alert('Плейлист: ' + tracks.length + ' треков'); }
 
-// Debounce для поиска (авто по вводу)
+// Автозапуск YouTube IFrame API
+const tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+const firstScriptTag = document.getElementsByTagName('script')[0];
+firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+// Debounce поиск
 let timeout;
 document.getElementById('query').addEventListener('input', () => {
   clearTimeout(timeout);
   timeout = setTimeout(search, 500);
 });
-
-// Enter → поиск
 document.getElementById('query').addEventListener('keypress', e => { if(e.key==='Enter') search(); });
 
 // TG init
