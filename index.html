@@ -3,130 +3,206 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-  <title>Музыка в Telegram</title>
+  <title>🎵 YouTube Music в Telegram</title>
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0e0e0e;
-      --card: #1a1a1a;
+      --bg: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+      --card: rgba(255,255,255,0.05);
       --text: #ffffff;
       --text-secondary: #b3b3b3;
-      --accent: #ff0000; /* YouTube red */
-      --green: #1DB954;
+      --accent: #ff0000;
+      --border: rgba(255,255,255,0.1);
+      --shadow: 0 8px 32px rgba(0,0,0,0.3);
     }
+    * { box-sizing: border-box; }
     body { 
       margin:0; padding:0; background:var(--bg); color:var(--text); 
-      font-family:'Inter',sans-serif; min-height:100vh;
+      font-family:'Inter',sans-serif; min-height:100vh; overflow-x:hidden;
     }
     .container { padding:20px; max-width:500px; margin:0 auto; }
-    h1 { text-align:center; margin:0 0 30px; font-size:24px; }
+    h1 { 
+      text-align:center; margin:0 0 30px; font-size:28px; font-weight:700; 
+      background:linear-gradient(45deg, var(--accent), #ff6b6b); -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+    }
     .search-box {
-      position:relative; margin-bottom:25px;
+      position:relative; margin-bottom:25px; display:flex;
     }
     .search-box input {
-      width:100%; padding:16px 50px 16px 20px; border-radius:50px;
-      border:none; background:#2a2a2a; color:white; font-size:17px;
-      outline:none;
+      flex:1; padding:18px 20px; border-radius:25px 0 0 25px;
+      border:none; background:rgba(42,42,42,0.8); color:white; font-size:17px;
+      outline:none; backdrop-filter:blur(10px);
     }
     .search-box button {
-      position:absolute; right:6px; top:6px; width:48px; height:48px;
-      background:var(--accent); border:none; border-radius:50%; 
-      color:white; font-size:22px; cursor:pointer;
+      padding:18px 24px; background:var(--accent); border:none; border-radius:0 25px 25px 0; 
+      color:white; font-size:18px; font-weight:500; cursor:pointer; transition:0.2s;
     }
-    .results { margin-top:10px; }
+    .search-box button:hover { background:#cc0000; transform:scale(1.05); }
+    .results { display:grid; gap:15px; }
     .track {
       display:flex; align-items:center; background:var(--card); 
-      border-radius:16px; padding:12px; margin-bottom:12px; cursor:pointer;
-      transition:0.2s; gap:14px;
+      border-radius:20px; padding:16px; cursor:pointer; transition:0.3s;
+      border:1px solid var(--border); backdrop-filter:blur(10px);
     }
-    .track:hover { background:#2a2a2a; transform:translateY(-2px); }
-    .track img { width:64px; height:64px; border-radius:12px; object-fit:cover; }
-    .track-info h3 { margin:0; font-size:16px; }
-    .track-info p { margin:4px 0 0; font-size:13px; color:var(--text-secondary); }
-    .service { background:var(--accent); padding:2px 8px; border-radius:6px; font-size:11px; margin-left:8px; }
+    .track:hover { transform:translateY(-4px); box-shadow:var(--shadow); border-color:var(--accent); }
+    .track img { width:70px; height:70px; border-radius:15px; object-fit:cover; margin-right:16px; }
+    .track-info { flex:1; }
+    .track-info h3 { margin:0 0 4px; font-size:16px; font-weight:600; }
+    .track-info p { margin:0; font-size:14px; color:var(--text-secondary); }
+    .service { background:var(--accent); color:white; padding:4px 10px; border-radius:12px; font-size:12px; font-weight:500; }
+    .duration { font-size:12px; color:var(--text-secondary); margin-left:auto; }
     .player {
-      position:fixed; bottom:0; left:0; right:0; background:var(--card);
-      padding:16px; border-top:1px solid #333; backdrop-filter:blur(10px);
-      display:none; z-index:1000;
+      position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(0,0,0,0.8), rgba(0,0,0,0.95)); 
+      padding:20px; border-top:1px solid var(--border); backdrop-filter:blur(20px); display:none; z-index:1000;
     }
-    .now-playing { display:flex; align-items:center; gap:14px; }
-    .now-playing img { width:56px; height:56px; border-radius:10px; }
-    .no-results { text-align:center; padding:40px; color:var(--text-secondary); }
-    .loading { text-align:center; padding:30px; }
-    .spinner { border:4px solid #333; border-top:4px solid var(--accent); border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto; }
+    .now-playing { display:flex; align-items:center; gap:16px; margin-bottom:12px; }
+    .now-playing img { width:60px; height:60px; border-radius:12px; }
+    .controls { display:flex; justify-content:space-between; align-items:center; margin:12px 0; }
+    .controls button { background:none; border:none; color:var(--text); font-size:24px; cursor:pointer; padding:8px; border-radius:50%; transition:0.2s; }
+    .controls button:hover { background:var(--card); }
+    .progress { height:4px; background:var(--border); border-radius:2px; overflow:hidden; margin:8px 0; }
+    .progress-bar { height:100%; background:linear-gradient(90deg, var(--accent), #ff6b6b); width:0%; transition:width 0.1s; }
+    .no-results, .loading { text-align:center; padding:60px 20px; color:var(--text-secondary); }
+    .spinner { border:3px solid var(--border); border-top:3px solid var(--accent); border-radius:50%; width:40px; height:40px; animation:spin 1s linear infinite; margin:0 auto 20px; }
     @keyframes spin { to { transform:rotate(360deg); } }
-    .video-player { width:100%; height:200px; border-radius:12px; margin-top:10px; }
+    .video-player { width:100%; height:220px; border-radius:16px; margin-top:12px; }
+    .playlist-btn { position:fixed; top:20px; right:20px; background:var(--accent); color:white; border:none; border-radius:50%; width:50px; height:50px; font-size:20px; cursor:pointer; z-index:1001; }
+    /* Анимации */
+    .track { animation: fadeInUp 0.3s ease-out; }
+    @keyframes fadeInUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
   </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>🎵 YouTube Music Search</h1>
+  <h1>🎵 YouTube Music</h1>
   
   <div class="search-box">
-    <input type="text" id="query" placeholder="Введи название трека или артиста..." autocomplete="off" />
+    <input type="text" id="query" placeholder="Ищи треки, артистов... (напр. 'bad guy')" autocomplete="off" />
     <button onclick="search()">🔍</button>
   </div>
 
   <div id="content">
-    <p class="no-results">Начни поиск — найду официальную музыку на YouTube</p>
+    <p class="no-results">Начни поиск — миллионы треков ждут! 🚀</p>
   </div>
 </div>
+
+<button class="playlist-btn" onclick="togglePlaylist()" id="playlistBtn">📋</button>
 
 <div class="player" id="player">
   <div class="now-playing">
     <img id="cover" src="" alt="">
-    <div>
-      <h3 id="title">—</h3>
-      <p id="artist">—</p>
+    <div style="flex:1;">
+      <h3 id="title" style="margin:0 0 4px; font-size:16px;">—</h3>
+      <p id="artist" style="margin:0; font-size:14px; color:var(--text-secondary);">—</p>
     </div>
+    <button onclick="toggleLike()" style="background:none; border:none; color:var(--text); font-size:24px; cursor:pointer;">❤️</button>
   </div>
+  <div class="controls">
+    <button onclick="prevTrack()">⏮️</button>
+    <button id="playBtn" onclick="togglePlay()">▶️</button>
+    <button onclick="nextTrack()">⏭️</button>
+  </div>
+  <div class="progress"><div class="progress-bar" id="progress"></div></div>
   <div id="video-container" class="video-player"></div>
 </div>
 
 <script>
-// === YouTube Music Search (работает без API-ключа, через CORS-прокси + парсинг) ===
+// Глобальные: треки, текущий индекс, плейлист
 let tracks = [];
+let currentIndex = 0;
+let isPlaying = false;
+let audio = null; // для видео через iframe, но используем events
 
+// Надёжный CORS-прокси 2025
+const CORS_PROXY = 'https://corsproxy.io/?';
+
+// Улучшенный поиск с fallback
 async function search() {
   const query = document.getElementById('query').value.trim();
   if (!query) return;
 
-  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><p>Ищем на YouTube Music...</p></div>';
+  document.getElementById('content').innerHTML = '<div class="loading"><div class="spinner"></div><p>Ищем хиты...</p></div>';
 
   try {
-    // CORS-прокси + YouTube search (фильтр на музыку)
-    const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official audio')}`;
-    const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(searchUrl)}`);
-    const html = await res.text();
+    let videoIds = [];
+    let titles = [];
+    let artists = [];
 
-    // Парсим videoId из HTML (надёжный regex для 2025)
-    const videoIds = [];
-    const regex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
-    let match;
-    while ((match = regex.exec(html)) !== null) {
-      if (!videoIds.includes(match[1])) {
-        videoIds.push(match[1]);
-      }
+    // Основной поиск с "official audio"
+    let searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query + ' official audio')}`;
+    let html = await fetchWithRetry(CORS_PROXY + encodeURIComponent(searchUrl), { mode: 'cors' });
+    let ids = parseVideoIds(html);
+    if (ids.length > 0) {
+      videoIds = ids.slice(0, 15);
+      [titles, artists] = await parseTitlesAndArtists(html); // Парсим из того же HTML
+    } else {
+      // Fallback без фильтра
+      searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+      html = await fetchWithRetry(CORS_PROXY + encodeURIComponent(searchUrl), { mode: 'cors' });
+      videoIds = parseVideoIds(html).slice(0, 15);
+      [titles, artists] = await parseTitlesAndArtists(html);
     }
 
     if (videoIds.length > 0) {
-      tracks = videoIds.slice(0, 10).map(id => ({
+      tracks = videoIds.map((id, i) => ({
         id: id,
-        title: `${query} (Official Audio)`, // Заголовок из поиска
-        artist: 'YouTube Music',
-        cover: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-        videoUrl: `https://www.youtube.com/watch?v=${id}`
+        title: titles[i] || `${query} (Audio)`,
+        artist: artists[i] || 'YouTube Music',
+        cover: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`,
+        videoUrl: `https://www.youtube.com/watch?v=${id}`,
+        duration: '3:45' // Заглушка, можно парсить из HTML
       }));
       displayTracks(tracks);
     } else {
-      document.getElementById('content').innerHTML = '<p class="no-results">Ничего не найдено по запросу. Попробуй точнее!</p>';
+      document.getElementById('content').innerHTML = '<p class="no-results">Ничего не найдено. Попробуй другой запрос! 😔</p>';
     }
   } catch(e) {
-    document.getElementById('content').innerHTML = '<p class="no-results">Ошибка сети, попробуй позже</p>';
+    document.getElementById('content').innerHTML = '<p class="no-results">Ошибка сети. Проверь интернет! 🔄</p>';
     console.error(e);
   }
+}
+
+// Fetch с retry и headers для TG
+async function fetchWithRetry(url, options = {}, retries = 2) {
+  options.headers = { ...options.headers, 'User-Agent': 'Mozilla/5.0 (Telegram WebApp)' };
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.ok) return await res.text();
+    } catch(e) { console.log(`Retry ${i+1}:`, e); }
+  }
+  throw new Error('Fetch failed');
+}
+
+// Улучшенный regex для videoId (2025 структура)
+function parseVideoIds(html) {
+  const regex = /"videoId":"([a-zA-Z0-9_-]{11})"/g;
+  const ids = [];
+  let match;
+  while ((match = regex.exec(html)) !== null) {
+    if (!ids.includes(match[1])) ids.push(match[1]);
+  }
+  // Fallback regex для старых структур
+  if (ids.length === 0) {
+    const fallback = /watch\?v=([a-zA-Z0-9_-]{11})/g;
+    while ((match = fallback.exec(html)) !== null) {
+      if (!ids.includes(match[1])) ids.push(match[1]);
+    }
+  }
+  return ids;
+}
+
+// Парсинг titles/artists из snippet (упрощённо, через regex)
+async function parseTitlesAndArtists(html) {
+  const titleRegex = /"title":{"runs":\[{"text":"([^"]+)"}\]/g;
+  const channelRegex = /"channelTitle":{"runs":\[{"text":"([^"]+)"}\]/g;
+  const titles = []; let tMatch;
+  const artists = []; let aMatch;
+  while ((tMatch = titleRegex.exec(html)) !== null) titles.push(tMatch[1]);
+  while ((aMatch = channelRegex.exec(html)) !== null) artists.push(aMatch[1]);
+  return [titles.slice(0,15), artists.slice(0,15)];
 }
 
 function displayTracks(tracks) {
@@ -134,42 +210,79 @@ function displayTracks(tracks) {
     <div class="track" onclick="playTrack(${i})">
       <img src="${t.cover}" onerror="this.src='https://i.imgur.com/3dRxX4V.jpg'">
       <div class="track-info">
-        <h3>${t.title}</h3>
+        <h3>${t.title.length > 40 ? t.title.substring(0,37)+'...' : t.title}</h3>
         <p>${t.artist} <span class="service">YouTube</span></p>
       </div>
+      <span class="duration">${t.duration}</span>
     </div>
   `).join('') + '</div>';
 }
 
 function playTrack(i) {
+  currentIndex = i;
   const t = tracks[i];
   document.getElementById('title').textContent = t.title;
   document.getElementById('artist').textContent = t.artist;
   document.getElementById('cover').src = t.cover;
 
-  // Embed YouTube видео с автоплеем
   const videoId = t.id;
   document.getElementById('video-container').innerHTML = `
     <iframe 
-      src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1" 
+      src="https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&controls=1" 
       frameborder="0" 
       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
       allowfullscreen 
       class="video-player"
+      id="ytPlayer"
     ></iframe>
   `;
   
   document.getElementById('player').style.display = 'block';
+  isPlaying = true;
+  document.getElementById('playBtn').textContent = '⏸️';
+  Telegram.WebApp.HapticFeedback.impactOccurred('light');
+  
+  // Прогресс (симуляция, т.к. iframe)
+  let progress = 0;
+  const interval = setInterval(() => {
+    progress += 1;
+    document.getElementById('progress').style.width = progress + '%';
+    if (progress >= 100) clearInterval(interval);
+  }, 30000); // ~3 мин трек
+}
+
+function togglePlay() {
+  const player = document.getElementById('ytPlayer');
+  if (isPlaying) {
+    player.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+    document.getElementById('playBtn').textContent = '▶️';
+  } else {
+    player.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+    document.getElementById('playBtn').textContent = '⏸️';
+  }
+  isPlaying = !isPlaying;
   Telegram.WebApp.HapticFeedback.selectionChanged();
 }
+
+function prevTrack() { if (currentIndex > 0) playTrack(currentIndex - 1); }
+function nextTrack() { if (currentIndex < tracks.length - 1) playTrack(currentIndex + 1); }
+function toggleLike() { Telegram.WebApp.HapticFeedback.notificationOccurred(); /* TODO: save likes */ }
+function togglePlaylist() { /* TODO: show playlist modal */ alert('Плейлист в разработке!'); }
+
+// Debounce для поиска (авто по вводу)
+let timeout;
+document.getElementById('query').addEventListener('input', () => {
+  clearTimeout(timeout);
+  timeout = setTimeout(search, 500);
+});
 
 // Enter → поиск
 document.getElementById('query').addEventListener('keypress', e => { if(e.key==='Enter') search(); });
 
-// Telegram готов
+// TG init
 Telegram.WebApp.ready();
 Telegram.WebApp.expand();
-document.body.style.marginBottom = '240px'; // отступ под плеер
+document.body.style.marginBottom = '280px';
 </script>
 
 </body>
